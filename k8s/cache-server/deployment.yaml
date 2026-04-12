@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-cache
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cache-server-data
+  namespace: arc-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-server
+  namespace: arc-cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache-server
+  template:
+    metadata:
+      labels:
+        app: cache-server
+    spec:
+      containers:
+        - name: cache-server
+          image: ghcr.io/falcondev-oss/github-actions-cache-server:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: API_BASE_URL
+              value: "http://cache-server.arc-cache.svc.cluster.local:3000"
+            - name: STORAGE_DRIVER
+              value: "filesystem"
+            - name: STORAGE_FILESYSTEM_PATH
+              value: "/data/cache"
+            - name: DB_DRIVER
+              value: "sqlite"
+            - name: DB_SQLITE_PATH
+              value: "/data/cache-server.db"
+            - name: CACHE_CLEANUP_OLDER_THAN_DAYS
+              value: "7"
+            - name: ENABLE_DIRECT_DOWNLOADS
+              value: "false"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cache-server-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache-server
+  namespace: arc-cache
+spec:
+  selector:
+    app: cache-server
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

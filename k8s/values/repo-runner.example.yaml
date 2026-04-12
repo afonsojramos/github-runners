@@ -1,0 +1,28 @@
+githubConfigUrl: "https://github.com/user/repo"        # scoped to a single repository
+githubConfigSecret: my-repo-github-secret               # k8s secret name with github_token key (needs repo scope)
+
+runnerScaleSetName: "my-repo-runner"                    # used as runs-on: label in workflows
+
+minRunners: 0
+maxRunners: 15
+
+containerMode:
+  type: "dind"
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: custom-arc-runner:0.4.0
+        imagePullPolicy: Never
+        command: ["/home/runner/run.sh"]
+        env:
+          - name: CUSTOM_ACTIONS_RESULTS_URL
+            value: "http://cache-server.arc-cache.svc.cluster.local:3000/"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 1Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi

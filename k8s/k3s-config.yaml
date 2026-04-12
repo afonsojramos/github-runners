@@ -1,0 +1,23 @@
+# Copy to /etc/rancher/k3s/config.yaml and `sudo systemctl restart k3s`.
+#
+# Tuning notes:
+# - eviction-hard/soft relaxed from default 15% free to 3%/5% because this
+#   is a dev machine with a nearly-full home partition.
+# - inodesFree thresholds explicitly overridden: btrfs reports 0 inodes
+#   (dynamic allocation), which kubelet interprets as 0% free and triggers
+#   DiskPressure taint with the defaults.
+# - image-gc thresholds bumped to 99/97 so kubelet does not GC the custom
+#   runner image during the 0→0 idle window (default is 85/80, which
+#   wipes the image on any pod cycle when disk is >85% full).
+# - resolv-conf points at systemd-resolved's real upstream file, not
+#   /etc/resolv.conf (which points at the 127.0.0.53 stub). Without this,
+#   CoreDNS reads the stub via the pod's /etc/resolv.conf and the `loop`
+#   plugin crashes with FATAL loop detected.
+resolv-conf: /run/systemd/resolve/resolv.conf
+kubelet-arg:
+  - "eviction-hard=nodefs.available<2%,imagefs.available<2%,nodefs.inodesFree<1%,imagefs.inodesFree<1%"
+  - "eviction-soft=nodefs.available<3%,imagefs.available<3%,nodefs.inodesFree<2%,imagefs.inodesFree<2%"
+  - "eviction-soft-grace-period=nodefs.available=1m,imagefs.available=1m,nodefs.inodesFree=1m,imagefs.inodesFree=1m"
+  - "eviction-minimum-reclaim=nodefs.available=500Mi,imagefs.available=500Mi"
+  - "image-gc-high-threshold=99"
+  - "image-gc-low-threshold=97"
