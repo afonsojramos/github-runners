@@ -1,0 +1,5 @@
+.env
+.env.*
+.claude/
+k8s/values/*.yaml
+!k8s/values/*.example.yaml
