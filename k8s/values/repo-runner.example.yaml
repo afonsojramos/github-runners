@@ -13,7 +13,7 @@ template:
   spec:
     containers:
       - name: runner
-        image: custom-arc-runner:0.4.0
+        image: custom-arc-runner:0.4.0  # managed by build.sh — see VERSION file
         imagePullPolicy: Never
         command: ["/home/runner/run.sh"]
         env:
