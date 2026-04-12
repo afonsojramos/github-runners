@@ -42,6 +42,8 @@ Built locally and imported into k3s's containerd. Based on [`falcondev-oss/actio
 .
 ├── CLAUDE.md                       # This file
 ├── README.md                       # Public-facing overview
+├── VERSION                         # Runner image version (single source of truth)
+├── build.sh                        # Build, import, and update runner image
 ├── .env                            # GitHub PATs (never commit)
 ├── docker/
 │   ├── docker-compose.yml          # LEGACY — rollback path
@@ -101,21 +103,17 @@ helm upgrade <name>-runner -n arc-runners \
 
 ### Rebuilding the runner image
 
-```bash
-cd k8s/runner-image
-NEW_TAG=x.y.z   # bump per semver
-docker build -t custom-arc-runner:$NEW_TAG .
-docker save custom-arc-runner:$NEW_TAG | sudo k3s ctr -n k8s.io images import -
+1. Bump the version in `VERSION`
+2. Run `./build.sh` — builds, imports into k3s, updates all values files
+3. Helm upgrade each scale set:
+   ```bash
+   for f in <runner-names>; do
+     helm upgrade $f -n arc-runners -f k8s/values/$f.yaml \
+       oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+   done
+   ```
 
-# Update tag in values files, then helm upgrade each scale set
-sed -i "s|custom-arc-runner:[0-9.]*|custom-arc-runner:$NEW_TAG|g" k8s/values/*.yaml
-for f in <runner-names>; do
-  helm upgrade $f -n arc-runners -f k8s/values/$f.yaml \
-    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
-done
-```
-
-Never reuse a tag. Always pass `-n k8s.io` to `k3s ctr import`.
+Never reuse a tag — kubelet caches by tag.
 
 ### Adding a new runner scope
 
@@ -231,9 +229,7 @@ sudo systemctl restart k3s
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 # 4. Build and import the runner image
-cd k8s/runner-image
-docker build -t custom-arc-runner:0.4.0 .
-docker save custom-arc-runner:0.4.0 | sudo k3s ctr -n k8s.io images import -
+./build.sh
 
 # 5. Cache server
 kubectl apply -f k8s/cache-server/deployment.yaml

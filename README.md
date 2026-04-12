@@ -29,24 +29,25 @@ The cache server intercepts `actions/cache` requests locally. This requires the 
 
 ```
 .
+├── VERSION                         # Runner image version (single source of truth)
+├── build.sh                        # Build, import, and update runner image
 ├── k8s/
 │   ├── runner-image/
-│   │   └── Dockerfile          # Custom ARC runner image
+│   │   └── Dockerfile              # Custom ARC runner image
 │   ├── postgres-image/
-│   │   └── Dockerfile          # postgres:17 with max_connections=300
+│   │   └── Dockerfile              # postgres:17 with max_connections=300
 │   ├── cache-server/
-│   │   └── deployment.yaml     # Namespace + PVC + Deployment + Service
+│   │   └── deployment.yaml         # Namespace + PVC + Deployment + Service
 │   ├── values/
-│   │   ├── zlar-runner.yaml    # Helm values per scale set
-│   │   ├── lutus-runner.yaml
-│   │   └── oakslot-runner.yaml
-│   ├── quota.yaml              # ResourceQuota (15 pod cap)
-│   └── k3s-config.yaml         # Kubelet tuning (disk pressure + image GC)
+│   │   ├── org-runner.example.yaml   # Template for org-scoped runners
+│   │   └── repo-runner.example.yaml  # Template for repo-scoped runners
+│   ├── quota.yaml                  # ResourceQuota (15 pod cap)
+│   └── k3s-config.yaml            # Kubelet tuning (disk pressure + image GC)
 ├── docker/
-│   ├── docker-compose.yml      # Legacy Docker Compose stack (rollback path)
-│   └── Dockerfile              # Legacy myoung34-based runner image
-├── CLAUDE.md                   # Detailed operational documentation
-└── .env                        # GitHub PATs (not committed)
+│   ├── docker-compose.yml          # Legacy Docker Compose stack (rollback path)
+│   └── Dockerfile                  # Legacy myoung34-based runner image
+├── CLAUDE.md                       # Detailed operational documentation
+└── .env                            # GitHub PATs (not committed)
 ```
 
 ## Quick start
@@ -70,9 +71,7 @@ sudo cp k8s/k3s-config.yaml /etc/rancher/k3s/config.yaml
 sudo systemctl restart k3s
 
 # 3. Build and import the runner image
-cd k8s/runner-image
-docker build -t custom-arc-runner:0.4.0 .
-docker save custom-arc-runner:0.4.0 | sudo k3s ctr -n k8s.io images import -
+./build.sh
 
 # 4. Cache server
 kubectl apply -f k8s/cache-server/deployment.yaml
@@ -115,13 +114,7 @@ runs-on: my-runner
 
 ### Rebuilding the runner image
 
-Always bump the tag — kubelet caches by tag and ignores rebuilt images with the same tag.
-
-```bash
-docker build -t custom-arc-runner:$NEW_TAG k8s/runner-image/
-docker save custom-arc-runner:$NEW_TAG | sudo k3s ctr -n k8s.io images import -
-# Update tag in k8s/values/*.yaml, then helm upgrade each scale set
-```
+Bump the version in `VERSION`, then run `./build.sh`. It builds, imports into k3s, and updates all values files. Then `helm upgrade` each scale set to apply.
 
 ### Cache server
 
