@@ -1,11 +1,13 @@
-# arc-runners
+# github-runners
 
 Self-hosted GitHub Actions runner infrastructure using [Actions Runner Controller (ARC)](https://github.com/actions/actions-runner-controller) on a single-node [k3s](https://k3s.io) cluster.
+
+AI-assisted development burns through GitHub Actions minutes fast. Self-hosting gives you unlimited CI for private repos at the cost of a single machine.
 
 ## Features
 
 - **Zero idle cost** — runner pods scale from 0 and are destroyed after each job
-- **Local cache server** — [falcondev-oss/github-actions-cache-server](https://github.com/falcondev-oss/github-actions-cache-server) backed by a 10 Gi PVC, transparent to workflows via `CUSTOM_ACTIONS_RESULTS_URL`
+- **Local cache server** — [`actions/cache`](https://github.com/actions/cache) artifacts are stored on-disk instead of GitHub's servers, so cache restores are near-instant over loopback rather than a ~400 MB download over the internet each run. Uses [falcondev-oss/github-actions-cache-server](https://github.com/falcondev-oss/github-actions-cache-server), transparent to workflows — no changes needed
 - **DinD container mode** — full Docker support inside jobs (`services:` blocks, `docker run`, etc.) with automatic cleanup
 - **Custom runner image** — Node.js 24, Playwright + Chromium, and a build toolchain pre-installed
 - **Global pod cap** — `ResourceQuota` limits total concurrent runners across all scale sets

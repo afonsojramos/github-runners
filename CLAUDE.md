@@ -1,4 +1,4 @@
-# arc-runners
+# github-runners
 
 Self-hosted GitHub Actions runner infrastructure using Actions Runner Controller (ARC) on a single-node k3s cluster. The previous Docker Compose stack is kept in `docker/` as a rollback path.
 
