@@ -1,0 +1,98 @@
+x-runner-common: &runner-common
+  build: .
+  restart: unless-stopped
+  depends_on:
+    cache-server:
+      condition: service_healthy
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - runner-cache:/home/runner/.cache
+  tmpfs:
+    - /tmp/runner/work:size=8G
+  deploy:
+    replicas: 10
+    resources:
+      limits:
+        cpus: "4"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  cache-server:
+    image: ghcr.io/falcondev-oss/github-actions-cache-server
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://cache-server:3000
+      STORAGE_DRIVER: filesystem
+      STORAGE_FILESYSTEM_PATH: /data/cache
+      DB_DRIVER: sqlite
+      DB_SQLITE_PATH: /data/cache-server.db
+      CACHE_CLEANUP_OLDER_THAN_DAYS: "7"
+      SKIP_TOKEN_VALIDATION: "true"
+    volumes:
+      - cache-server-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  docker-pruner:
+    image: docker:cli
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "while true; do docker ps -aq --filter 'name=postgres-' | xargs -r docker rm -f; docker volume prune -f; docker system prune -af --filter 'until=72h'; sleep 21600; done"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  zlar-runner:
+    <<: *runner-common
+    environment:
+      ACCESS_TOKEN: ${ZLAR_ACCESS_TOKEN}
+      RUNNER_SCOPE: org
+      ORG_NAME: zlar-app
+      LABELS: self-hosted,linux,x64
+      RUNNER_WORKDIR: /tmp/runner/work
+      DISABLE_AUTO_UPDATE: "true"
+      EPHEMERAL: "true"
+      ACTIONS_RESULTS_URL: http://cache-server:3000/
+
+  lutus-runner:
+    <<: *runner-common
+    environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      RUNNER_SCOPE: repo
+      REPO_URL: https://github.com/afonsojramos/lutus
+      LABELS: self-hosted,linux,x64
+      RUNNER_WORKDIR: /tmp/runner/work
+      DISABLE_AUTO_UPDATE: "true"
+      EPHEMERAL: "true"
+      ACTIONS_RESULTS_URL: http://cache-server:3000/
+
+  oakslot-runner:
+    <<: *runner-common
+    environment:
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      RUNNER_SCOPE: repo
+      REPO_URL: https://github.com/afonsojramos/oakslot
+      LABELS: self-hosted,linux,x64
+      RUNNER_WORKDIR: /tmp/runner/work
+      DISABLE_AUTO_UPDATE: "true"
+      EPHEMERAL: "true"
+      ACTIONS_RESULTS_URL: http://cache-server:3000/
+
+volumes:
+  runner-cache:
+  cache-server-data:
