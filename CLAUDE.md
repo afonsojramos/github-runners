@@ -13,7 +13,7 @@ Self-hosted GitHub Actions runner infrastructure using Actions Runner Controller
 - **Runner scale sets** in `arc-runners`, each scaling `0 → 15` runners. Multiple scale sets share the namespace — one per org or repo scope.
 - **Global pod cap** of 15 enforced via a `ResourceQuota` on `arc-runners`. Any single scope can burst to 15 if it's the only one busy; when multiple scopes contend it's first-come-first-served. See [`k8s/quota.yaml`](k8s/quota.yaml).
 - **Listener pods** (one per scale set) live in `arc-systems`, polling GitHub's broker. Runner pods only exist while jobs are running — no idle cost.
-- **Container mode**: `dind`. ARC auto-injects a privileged DinD sidecar per runner pod. CI jobs using `services:` or `docker run` talk to that sidecar — when the pod dies the daemon dies with it.
+- **Container mode**: DinD, but **manually configured** in each values file rather than via `containerMode.type: "dind"`. The values files declare the full `init-dind-externals` + `dind` init containers, the `work`/`dind-sock`/`dind-externals` volumes, and the `DOCKER_HOST` env on the runner. This is required so we can pass `--registry-mirror=https://mirror.gcr.io` to `dockerd` (see gotcha 10). Do not set `containerMode.type: "dind"` — the chart appends its own `dind` container on top of the manual one and the `AutoscalingRunnerSet` fails validation with `Duplicate value: name=dind`.
 - **Local cache server**: [`falcondev-oss/github-actions-cache-server`](https://github.com/falcondev-oss/github-actions-cache-server) in `arc-cache`, backed by a 10 Gi PVC (SQLite + filesystem). In-cluster URL: `http://cache-server.arc-cache.svc.cluster.local:3000/`.
 
 ### Custom runner image
@@ -183,6 +183,8 @@ services:
 7. **Host needs `iptables`.** Docker requires `iptables-nft` on the host. k3s ships its own but the host package is needed for `docker build`.
 8. **Runner pods disappear fast.** With `minRunners: 0`, pods only exist during jobs. Use `kubectl get pods -w` to catch them.
 9. **VPN breaks in-cluster DNS.** VPNs that hijack port 53 (e.g. Mullvad) break CoreDNS. Disable the VPN or enable local network sharing if available.
+10. **Spanish ISPs block Cloudflare during LaLiga matches.** Docker Hub serves image blobs from Cloudflare R2 (`*.r2.cloudflarestorage.com`). During matches, Spanish ISPs null-route parts of Cloudflare's anycast ranges, so `docker pull postgres:17` times out from DinD with `dial tcp 172.64.x.x:443: i/o timeout`. Mitigated by passing `--registry-mirror=https://mirror.gcr.io` to `dockerd` — Google mirrors Docker Hub from its own CDN. See the `dind` init container in each `k8s/values/*.yaml`. If a pull still fails with `ImagePullBackOff`, the mirror may not cover that image; confirm from the host with `curl -sSI --max-time 5 https://mirror.gcr.io/v2/library/<image>/manifests/<tag>`.
+11. **Customizing DinD requires dropping `containerMode.type: "dind"`.** The chart's helper is append-only: whatever you put under `template.spec.initContainers` is added *alongside* the auto-injected `dind`, causing `AutoscalingRunnerSet` validation to fail with `Duplicate value: {"name":"dind"}`. To override dind args, declare `init-dind-externals` + `dind` init containers, `DOCKER_HOST` on the runner, and the `work`/`dind-sock`/`dind-externals` volumes yourself — and leave `containerMode` unset.
 
 ---
 
