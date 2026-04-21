@@ -6,19 +6,71 @@ runnerScaleSetName: "my-org-runner"                    # used as runs-on: label 
 minRunners: 0
 maxRunners: 15
 
-containerMode:
-  type: "dind"
+# containerMode.type: "dind" intentionally NOT set — the chart would auto-append
+# its own dind init-container on top of ours. We replicate the full DinD setup
+# manually below so we can add --registry-mirror.
+#
+# Spanish ISPs periodically block Cloudflare IP ranges during LaLiga matches,
+# which kills docker pulls for images whose blobs live on Cloudflare R2 (e.g.
+# postgres:17 from Docker Hub). mirror.gcr.io serves the same Docker Hub content
+# from Google's CDN, so the mirror arg routes blob fetches around the CF block.
 
 template:
   spec:
+    initContainers:
+      - name: init-dind-externals
+        image: custom-arc-runner:0.4.0  # managed by build.sh — see VERSION file
+        imagePullPolicy: Never
+        command: ["cp", "-r", "-v", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+      - name: dind
+        image: docker:dind
+        args:
+          - dockerd
+          - --host=unix:///var/run/docker.sock
+          - --group=$(DOCKER_GROUP_GID)
+          - --registry-mirror=https://mirror.gcr.io
+        env:
+          - name: DOCKER_GROUP_GID
+            value: "123"
+        securityContext:
+          privileged: true
+        restartPolicy: Always
+        startupProbe:
+          exec:
+            command: ["docker", "info"]
+          failureThreshold: 24
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: dind-externals
+            mountPath: /home/runner/externals
     containers:
       - name: runner
         image: custom-arc-runner:0.4.0  # managed by build.sh — see VERSION file
         imagePullPolicy: Never
         command: ["/home/runner/run.sh"]
         env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+          - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+            value: "120"
           - name: CUSTOM_ACTIONS_RESULTS_URL
             value: "http://cache-server.arc-cache.svc.cluster.local:3000/"
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: dind-externals
+            mountPath: /home/runner/externals
         resources:
           requests:
             cpu: "500m"
@@ -26,3 +78,10 @@ template:
           limits:
             cpu: "4"
             memory: 8Gi
+    volumes:
+      - name: work
+        emptyDir: {}
+      - name: dind-sock
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
