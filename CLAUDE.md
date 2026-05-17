@@ -172,6 +172,30 @@ services:
 
 ---
 
+## Capacity & scaling
+
+The 15-pod cap on `arc-runners` is a deliberate ceiling, not a default. The node (`orpheus`) has 24 CPU / 64 GB RAM / 469 GB disk.
+
+**Observed load profiles:**
+
+| Scenario | Node CPU | Load avg | Notes |
+|---|---|---|---|
+| Steady state (warm cache, mixed activity) | ~10-15% | 1-3 | Plenty of headroom |
+| Single scope busy, warm cache | ~30-40% | 5-10 | Comfortable |
+| **Cold-cache stampede (15 pods, fresh deps)** | **~80%** | **35+** | At the edge — design constraint |
+
+Cold-cache stampedes happen after cache-server data loss, after a fresh runner image, or when many distinct workflows arrive simultaneously. Each pod doing `bun install` / `cargo build` / Docker pulls in parallel can saturate the CPU even though steady-state usage looks tame.
+
+**Do not raise `count/pods` in [`k8s/quota.yaml`](k8s/quota.yaml) above 15 without first:**
+
+1. Confirming disk headroom is well above the eviction thresholds in [`k8s/k3s-config.yaml`](k8s/k3s-config.yaml). Each concurrent pod burns ephemeral storage for checkout + DinD layers + node_modules / target dirs.
+2. Verifying CPU/memory headroom under a deliberate stampede (e.g., trigger several cold-cache jobs at once and watch `kubectl top node` + `uptime`).
+3. Bumping `maxRunners` in each `k8s/values/*.yaml` to match — otherwise the quota change is invisible, since each scale set caps at its own `maxRunners`.
+
+The bottleneck order on this node is **disk > CPU > memory**. Disk is what kills the cluster (see gotcha #12); CPU is what slows jobs.
+
+---
+
 ## Known gotchas
 
 1. **`:latest` tag breaks local images.** Kubelet forces `imagePullPolicy: Always` on `:latest`. Use versioned tags and bump on every rebuild.
