@@ -48,7 +48,7 @@ spec:
             - name: DB_SQLITE_PATH
               value: "/data/cache-server.db"
             - name: CACHE_CLEANUP_OLDER_THAN_DAYS
-              value: "7"
+              value: "3"
             - name: ENABLE_DIRECT_DOWNLOADS
               value: "false"
           volumeMounts:
