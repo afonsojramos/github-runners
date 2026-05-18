@@ -52,6 +52,29 @@ template:
             mountPath: /var/run
           - name: dind-externals
             mountPath: /home/runner/externals
+      # Regular init container — runs after the dind sidecar's startupProbe
+      # succeeds. Loads prebaked image tars (shipped in the runner image at
+      # /opt/preloaded-images/) into DinD's image store so workflows that
+      # reference them skip the network pull. See CLAUDE.md gotcha #13.
+      - name: preload-images
+        image: custom-arc-runner:0.5.0  # managed by build.sh — see VERSION file
+        imagePullPolicy: Never
+        env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+        command:
+          - sh
+          - -c
+          - |
+            set -e
+            shopt -s nullglob 2>/dev/null || true
+            for tar in /opt/preloaded-images/*.tar; do
+              echo "Loading $tar into DinD..."
+              docker load -i "$tar"
+            done
+        volumeMounts:
+          - name: dind-sock
+            mountPath: /var/run
     containers:
       - name: runner
         image: custom-arc-runner:0.5.0  # managed by build.sh — see VERSION file
