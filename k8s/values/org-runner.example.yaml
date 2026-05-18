@@ -18,6 +18,35 @@ maxRunners: 15
 template:
   spec:
     initContainers:
+      # Refuse to start the pod if btrfs metadata is critically full. Prevents
+      # the "spawn 15 pods, all write to the snapshotter, crash the node"
+      # stampede (see CLAUDE.md gotcha #14). Reads sysfs directly so no
+      # btrfs tooling is required in the container.
+      - name: check-btrfs-metadata
+        image: custom-arc-runner:0.6.1  # managed by build.sh — see VERSION file
+        imagePullPolicy: Never
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            threshold=95
+            for fs in /host-sys/fs/btrfs/*/; do
+              [ -d "$fs/allocation/metadata" ] || continue
+              total=$(cat "$fs/allocation/metadata/total_bytes")
+              used=$(cat "$fs/allocation/metadata/bytes_used")
+              pct=$(( used * 100 / total ))
+              echo "btrfs $(basename $fs) metadata: ${pct}% (${used}/${total} bytes)"
+              if [ "$pct" -ge "$threshold" ]; then
+                echo "ERROR: metadata at ${pct}% (>=${threshold}%) — refusing to start"
+                echo "Run on host: sudo btrfs balance start -dusage=10 -musage=50 /"
+                exit 1
+              fi
+            done
+        volumeMounts:
+          - name: host-sys-fs-btrfs
+            mountPath: /host-sys/fs/btrfs
+            readOnly: true
       - name: init-dind-externals
         image: custom-arc-runner:0.6.1  # managed by build.sh — see VERSION file
         imagePullPolicy: Never
@@ -108,3 +137,7 @@ template:
         emptyDir: {}
       - name: dind-externals
         emptyDir: {}
+      - name: host-sys-fs-btrfs
+        hostPath:
+          path: /sys/fs/btrfs
+          type: Directory
