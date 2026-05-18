@@ -6,9 +6,12 @@
 # - inodesFree thresholds explicitly overridden: btrfs reports 0 inodes
 #   (dynamic allocation), which kubelet interprets as 0% free and triggers
 #   DiskPressure taint with the defaults.
-# - image-gc thresholds bumped to 99/97 so kubelet does not GC the custom
-#   runner image during the 0→0 idle window (default is 85/80, which
-#   wipes the image on any pod cycle when disk is >85% full).
+# - image-gc thresholds set to 90/85: high enough to retain the custom
+#   runner image during the 0→0 idle window (default 85/80 wipes it on
+#   any pod cycle when disk is >85% full), low enough that kubelet
+#   actually GCs old layers before btrfs metadata fills (see gotcha #14).
+#   Earlier setting of 99/97 effectively disabled GC and let the overlayfs
+#   snapshotter accumulate millions of inodes until btrfs ENOSPC.
 # - resolv-conf points at systemd-resolved's real upstream file, not
 #   /etc/resolv.conf (which points at the 127.0.0.53 stub). Without this,
 #   CoreDNS reads the stub via the pod's /etc/resolv.conf and the `loop`
@@ -19,5 +22,5 @@ kubelet-arg:
   - "eviction-soft=nodefs.available<3%,imagefs.available<3%,nodefs.inodesFree<2%,imagefs.inodesFree<2%"
   - "eviction-soft-grace-period=nodefs.available=1m,imagefs.available=1m,nodefs.inodesFree=1m,imagefs.inodesFree=1m"
   - "eviction-minimum-reclaim=nodefs.available=500Mi,imagefs.available=500Mi"
-  - "image-gc-high-threshold=99"
-  - "image-gc-low-threshold=97"
+  - "image-gc-high-threshold=90"
+  - "image-gc-low-threshold=85"
