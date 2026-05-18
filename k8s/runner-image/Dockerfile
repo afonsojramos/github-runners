@@ -38,6 +38,10 @@ RUN npx --yes playwright@latest install --with-deps chromium \
 # Preloaded image tars — loaded into DinD by the preload-images init container
 # at pod startup. Populated by build.sh. Eliminates cold-start image pulls
 # under heavy parallel load. See CLAUDE.md gotcha #13.
+# chmod a+r: `docker save` on the build host produces mode 0600 when run via
+# sudo, which the runner user can't read. Make the tars world-readable so the
+# preload-images init container can load them without privilege escalation.
 COPY preloaded-images/ /opt/preloaded-images/
+RUN chmod -R a+r /opt/preloaded-images/
 
 USER runner
