@@ -35,4 +35,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 RUN npx --yes playwright@latest install --with-deps chromium \
     && rm -rf /tmp/* /root/.cache /var/lib/apt/lists/*
 
+# Preloaded image tars — loaded into DinD by the preload-images init container
+# at pod startup. Populated by build.sh. Eliminates cold-start image pulls
+# under heavy parallel load. See CLAUDE.md gotcha #13.
+COPY preloaded-images/ /opt/preloaded-images/
+
 USER runner

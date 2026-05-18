@@ -3,3 +3,4 @@
 .claude/
 k8s/values/*.yaml
 !k8s/values/*.example.yaml
+k8s/runner-image/preloaded-images/*.tar
